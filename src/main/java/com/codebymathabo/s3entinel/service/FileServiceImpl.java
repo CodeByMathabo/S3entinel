@@ -2,76 +2,76 @@ package com.codebymathabo.s3entinel.service;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
-import org.springframework.web.multipart.MultipartFile;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.services.s3.model.S3Exception;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
+import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 
 @Service
 public class FileServiceImpl implements FileService {
 
     private static final Logger logger = LoggerFactory.getLogger(FileServiceImpl.class);
 
-    // Define the local storage path
-    // We use "C:/S3entinel-Uploads" for Windows.
-    // Note: Java handles forward slashes '/' correctly even on Windows.
-    private final Path storagePath = Paths.get("C:/S3entinel-Uploads");
+    private final S3Client s3Client;
+    private final String bucketName;
 
-    public FileServiceImpl() {
-        // Create the directory if it doesn't exist (Constructor logic)
-        try {
-            if (!Files.exists(storagePath)) {
-                Files.createDirectories(storagePath);
-                logger.info("Created local storage directory at: {}", storagePath);
-            }
-        } catch (IOException e) {
-            logger.error("Could not initialize storage location", e);
-            // If we can't create the folder, the service is broken. Fail fast.
-            throw new RuntimeException("Could not initialize storage", e);
-        }
+    // Allowed MIME types
+    private static final List<String> ALLOWED_TYPES = List.of("image/jpeg", "image/png", "application/pdf", "text/plain");
+
+    public FileServiceImpl(@Value("${aws.access.key.id}") String accessKey,
+                           @Value("${aws.secret.access.key}") String secretKey,
+                           @Value("${aws.region}") String region,
+                           @Value("${aws.s3.bucket.name}") String bucketName) {
+
+        this.bucketName = bucketName;
+        this.s3Client = S3Client.builder()
+                .region(Region.of(region))
+                .credentialsProvider(StaticCredentialsProvider.create(
+                        AwsBasicCredentials.create(accessKey, secretKey)))
+                .build();
     }
 
     @Override
-    public String uploadFile(MultipartFile file) {
-        logger.info("Starting file upload: {}", file.getOriginalFilename());
+    @Async // Background thread
+    public CompletableFuture<Object> uploadFile(byte[] fileData, String fileName, String contentType) {
+        logger.info("Service Layer: Uploading to AWS S3 in thread: {}", Thread.currentThread().getName());
 
-        if (!isValidFileType(file)) {
-            logger.warn("Invalid file type attempted");
-            throw new IllegalArgumentException("Only .txt files are allowed");
+        if (!isValidFileType(contentType)) {
+            return CompletableFuture.failedFuture(new IllegalArgumentException("Invalid file type."));
         }
 
-        return saveFileLocally(file);
-    }
-
-    // Isolate the IO logic
-    private String saveFileLocally(MultipartFile file) {
         try {
-            // Generate a unique name to prevent overwriting files with the same name
-            // e.g., "test.txt" becomes "uuid-test.txt"
-            String uniqueFileName = UUID.randomUUID() + "_" + file.getOriginalFilename();
+            String uniqueFileName = UUID.randomUUID() + "_" + fileName;
 
-            // Resolve the full path: C:/S3entinel-Uploads/uuid-test.txt
-            Path destinationPath = storagePath.resolve(uniqueFileName);
+            PutObjectRequest putOb = PutObjectRequest.builder()
+                    .bucket(bucketName)
+                    .key(uniqueFileName)
+                    .contentType(contentType)
+                    .build();
 
-            // Copy the file stream to the destination
-            Files.copy(file.getInputStream(), destinationPath, StandardCopyOption.REPLACE_EXISTING);
+            // I used RequestBody.fromBytes because the raw data is available now
+            s3Client.putObject(putOb, RequestBody.fromBytes(fileData));
 
-            logger.info("File saved locally at: {}", destinationPath);
-            return "File stored locally with name: " + uniqueFileName;
+            logger.info("File successfully uploaded to S3: {}", uniqueFileName);
+            return CompletableFuture.completedFuture("File uploaded to S3: " + uniqueFileName);
 
-        } catch (IOException e) {
-            logger.error("Failed to store file locally", e);
-            throw new RuntimeException("Failed to store file", e);
+        } catch (S3Exception e) {
+            logger.error("AWS S3 Upload failed", e);
+            return CompletableFuture.failedFuture(e);
         }
     }
 
-    private boolean isValidFileType(MultipartFile file) {
-        String contentType = file.getContentType();
-        return contentType != null && contentType.equals("text/plain");
+    private boolean isValidFileType(String contentType) {
+        return contentType != null && ALLOWED_TYPES.contains(contentType);
     }
 }
