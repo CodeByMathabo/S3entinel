@@ -32,7 +32,7 @@ public class FileServiceImpl implements FileService {
     private final S3Client s3Client;
     private final DynamoDbClient dynamoDbClient; // Database Connection
     private final String bucketName;
-    private final String tableName = "S3entinel_Files";
+    private final String tableName = "S3entinel_Files_IaC";
 
     private static final List<String> ALLOWED_TYPES = List.of("image/jpeg", "image/png", "application/pdf", "text/plain");
 

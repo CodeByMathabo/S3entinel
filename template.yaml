@@ -1,0 +1,39 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  S3entinel - Automated Infrastructure
+  Creates an S3 Bucket and DynamoDB Table for the ingestion system.
+
+Resources:
+  # 1. The Warehouse (S3 Bucket)
+  S3entinelBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 's3entinel-iac-${AWS::Region}-${AWS::AccountId}' # Generates a unique name automatically
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders: ['*']
+            AllowedMethods: [GET, PUT, POST, HEAD]
+            AllowedOrigins: ['*']
+
+  # 2. The Memory (DynamoDB Table)
+  S3entinelTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: S3entinel_Files_IaC
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S # String
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST # On-Demand (Free Tier friendly)
+
+Outputs:
+  # These print the results after deployment so we know what AWS created
+  BucketName:
+    Description: "The name of the S3 bucket created"
+    Value: !Ref S3entinelBucket
+  TableName:
+    Description: "The name of the DynamoDB table created"
+    Value: !Ref S3entinelTable
