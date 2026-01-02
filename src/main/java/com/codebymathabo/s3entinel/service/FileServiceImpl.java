@@ -5,18 +5,13 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
-import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
-import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.core.sync.RequestBody;
-import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 import software.amazon.awssdk.services.dynamodb.model.PutItemRequest;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
-import software.amazon.awssdk.services.s3.model.S3Exception;
 
-import java.io.IOException;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
@@ -30,38 +25,24 @@ public class FileServiceImpl implements FileService {
     private static final Logger logger = LoggerFactory.getLogger(FileServiceImpl.class);
 
     private final S3Client s3Client;
-    private final DynamoDbClient dynamoDbClient; // Database Connection
+    private final DynamoDbClient dynamoDbClient;
     private final String bucketName;
     private final String tableName = "S3entinel_Files_IaC";
 
+    // Allowed MIME types
     private static final List<String> ALLOWED_TYPES = List.of("image/jpeg", "image/png", "application/pdf", "text/plain");
 
-    public FileServiceImpl(@Value("${aws.access.key.id}") String accessKey,
-                           @Value("${aws.secret.access.key}") String secretKey,
-                           @Value("${aws.region}") String region,
+    // Constructor Injection: Spring Boot will auto-wire the clients from AwsConfig.java
+    public FileServiceImpl(S3Client s3Client,
+                           DynamoDbClient dynamoDbClient,
                            @Value("${aws.s3.bucket.name}") String bucketName) {
-
+        this.s3Client = s3Client;
+        this.dynamoDbClient = dynamoDbClient;
         this.bucketName = bucketName;
-
-        // Creates the credentials object once to reuse for both clients
-        var credentials = StaticCredentialsProvider.create(
-                AwsBasicCredentials.create(accessKey, secretKey));
-
-        // 1. Initialize S3 Client
-        this.s3Client = S3Client.builder()
-                .region(Region.of(region))
-                .credentialsProvider(credentials)
-                .build();
-
-        // 2. Initialize DynamoDB Client
-        this.dynamoDbClient = DynamoDbClient.builder()
-                .region(Region.of(region))
-                .credentialsProvider(credentials)
-                .build();
     }
 
     @Override
-    @Async
+    @Async // Runs in a background thread
     public CompletableFuture<Object> uploadFile(byte[] fileData, String fileName, String contentType) {
         logger.info("Service Layer: Processing file in thread: {}", Thread.currentThread().getName());
 
@@ -81,6 +62,7 @@ public class FileServiceImpl implements FileService {
                     .contentType(contentType)
                     .build();
 
+            // Used RequestBody.fromBytes since I am working with byte[] now
             s3Client.putObject(putOb, RequestBody.fromBytes(fileData));
             logger.info("File uploaded to S3: {}", uniqueFileName);
 
