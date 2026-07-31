@@ -1,6 +1,9 @@
 # S3entinel
 A secure tool that automatically receives and processes files the moment they are uploaded, built using Spring Boot and AWS.
 
+## Architecture: The Hybrid Cloud
+For S3entinel, I wanted to see how different technologies work together, so I connected a traditional Spring Boot backend with AWS Lambda functions that trigger automatically.
+
 ## How this tool Works (Event-Driven Flow):
 >1. **Ingest:** The user uploads a file via the Spring Boot API.
 
@@ -12,8 +15,7 @@ A secure tool that automatically receives and processes files the moment they ar
 
 >5. **Processing:** AWS Lambda wakes up, catches the event, and performs background analysis such as Image Resizing, Virus Scanning without blocking the user.
 
-## Architecture: The Hybrid Cloud
-For S3entinel, I wanted to see how different technologies work together, so I connected a traditional Spring Boot backend with AWS Lambda functions that trigger automatically.
+## Design Diagram:
 
 ```mermaid
 graph LR
